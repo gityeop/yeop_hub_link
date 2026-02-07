@@ -1,0 +1,81 @@
+import React, { useRef } from 'react';
+import { X, Minus, Maximize2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+
+const Window = ({ id, isOpen, onClose, title, children, initialPosition = { x: 100, y: 100 }, ...props }) => {
+  const constraintsRef = useRef(null);
+
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+           drag
+           dragMomentum={false}
+           initial={{ opacity: 0, scale: 0.9, x: initialPosition.x, y: initialPosition.y }}
+           animate={{ opacity: 1, scale: 1 }}
+           exit={{ opacity: 0, scale: 0.9 }}
+           transition={{ type: "spring", stiffness: 300, damping: 30 }}
+           style={{
+              position: 'absolute',
+              width: props.width || '600px',
+              height: props.height || '400px',
+              backgroundColor: 'var(--window-bg)',
+              backdropFilter: 'blur(30px)',
+              borderRadius: '12px',
+              boxShadow: 'var(--window-shadow)',
+              border: '1px solid var(--window-border)',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              cursor: 'default' // Reset cursor for content
+           }}
+        >
+            {/* Window Header / Title Bar - Drag Handle */}
+            {!props.hideTitleBar && (
+            <div 
+              style={{
+                height: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                padding: '0 12px',
+                borderBottom: '1px solid rgba(0,0,0,0.05)',
+                cursor: 'grab', // Cursor to indicate draggable
+              }}
+              onPointerDown={(e) => {
+                  // Prevent drag from propagating if clicked on controls
+                  // Actually framer motion handles the whole div as draggable by default with `drag`.
+                  // Use dragControls if we want only header dragging, or just let whole window be draggable?
+                  // User asked for standard window behavior: usually moving by header.
+                  // For now, let's make the whole window draggable to ensure it works, then refine.
+                  // BETTER: Use dragListener={false} on content or dragControls.
+              }}
+            >
+              <div className="window-controls" style={{ display: 'flex', gap: '8px' }} onPointerDown={(e) => e.stopPropagation()}>
+                <div onClick={onClose} style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#FF5F56', border: '0.5px solid rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                </div>
+                <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#FFBD2E', border: '0.5px solid rgba(0,0,0,0.1)' }}></div>
+                <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#27C93F', border: '0.5px solid rgba(0,0,0,0.1)' }}></div>
+              </div>
+              <div style={{ flex: 1, textAlign: 'center', fontSize: '13px', fontWeight: '600', color: '#444', pointerEvents: 'none' }}>
+                {title}
+              </div>
+              <div style={{ width: '52px' }}></div>
+            </div>
+            )}
+
+            {/* Window Content - Prevent Dragging Here */}
+            <div 
+                className="window-content" 
+                style={{ flex: 1, overflow: 'auto', padding: '0', cursor: 'auto' }}
+                onPointerDown={(e) => e.stopPropagation()} 
+            >
+              {children}
+            </div>
+
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+};
+
+export default Window;
