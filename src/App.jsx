@@ -4,6 +4,7 @@ import MenuBar from './components/MenuBar/MenuBar';
 import Dock from './components/Dock/Dock';
 import Window from './components/Window/Window';
 import IMessageApp from './apps/iMessage/IMessageApp';
+import OnTextApp from './apps/OnText/OnTextApp';
 import './styles/global.css';
 
 function App() {
@@ -12,6 +13,7 @@ function App() {
     mail: false,
     instagram: false,
     threads: false,
+    ontext: false,
   });
 
   const toggleWindow = (appId) => {
@@ -48,6 +50,19 @@ function App() {
             height="800px"
         >
             <IMessageApp onClose={() => toggleWindow('messages')} />
+        </Window>
+
+        <Window 
+            id="ontext" 
+            title="OnText" 
+            isOpen={activeWindows.ontext} 
+            onClose={() => toggleWindow('ontext')}
+            initialPosition={{ x: 200, y: 150 }}
+            hideTitleBar={true}
+            width="920px"
+            height="650px"
+        >
+            <OnTextApp onClose={() => toggleWindow('ontext')} />
         </Window>
 
         <Dock onAppClick={handleAppClick} />
