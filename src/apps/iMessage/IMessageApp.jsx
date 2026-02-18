@@ -2,42 +2,38 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ArrowUp, MessageSquare, User } from 'lucide-react';
 import { motion } from 'framer-motion';
 
-const STORAGE_KEY = 'hub_link_guestbook_comments_v1';
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://158.179.161.109').replace(/\/+$/, '');
+const COMMENTS_ENDPOINT = `${API_BASE_URL}/api/comments`;
 const MAX_COMMENTS = 200;
 const MAX_MESSAGE_LENGTH = 300;
-const DEFAULT_COMMENTS = [
-    {
-        id: 'welcome',
-        name: 'Lim Sang Yeob',
-        text: '방문해주셔서 감사합니다. 아래에 자유롭게 댓글을 남겨주세요.',
-        isOwner: true,
-        createdAt: new Date().toISOString()
-    }
-];
+const DEFAULT_COMMENT = {
+    id: 'welcome',
+    name: 'Lim Sang Yeob',
+    text: '방문해주셔서 감사합니다. 아래에 자유롭게 댓글을 남겨주세요.',
+    isOwner: true,
+    createdAt: new Date().toISOString()
+};
 
-const isValidComment = (value) =>
-    value &&
-    typeof value === 'object' &&
-    typeof value.id === 'string' &&
-    typeof value.name === 'string' &&
-    typeof value.text === 'string' &&
-    typeof value.createdAt === 'string' &&
-    typeof value.isOwner === 'boolean';
+const buildCommentsWithWelcome = (apiComments) => [DEFAULT_COMMENT, ...apiComments.slice(-MAX_COMMENTS)];
 
-const loadComments = () => {
-    if (typeof window === 'undefined') return DEFAULT_COMMENTS;
-    try {
-        const raw = window.localStorage.getItem(STORAGE_KEY);
-        if (!raw) return DEFAULT_COMMENTS;
+const normalizeApiComment = (value) => {
+    if (!value || typeof value !== 'object') return null;
 
-        const parsed = JSON.parse(raw);
-        if (!Array.isArray(parsed)) return DEFAULT_COMMENTS;
+    const idRaw = value.id;
+    const nameRaw = value.name;
+    const messageRaw = value.message ?? value.text;
+    const createdAtRaw = value.created_at ?? value.createdAt;
 
-        const sanitized = parsed.filter(isValidComment).slice(-MAX_COMMENTS);
-        return sanitized.length > 0 ? sanitized : DEFAULT_COMMENTS;
-    } catch (error) {
-        return DEFAULT_COMMENTS;
-    }
+    if ((typeof idRaw !== 'number' && typeof idRaw !== 'string') || typeof nameRaw !== 'string') return null;
+    if (typeof messageRaw !== 'string' || typeof createdAtRaw !== 'string') return null;
+
+    return {
+        id: String(idRaw),
+        name: (nameRaw.trim() || 'Visitor').slice(0, 24),
+        text: messageRaw.slice(0, MAX_MESSAGE_LENGTH),
+        isOwner: false,
+        createdAt: createdAtRaw
+    };
 };
 
 const formatTimestamp = (isoString) => {
@@ -75,46 +71,84 @@ const CommentBubble = ({ name, text, createdAt, isOwner }) => (
 );
 
 const IMessageApp = ({ onClose }) => {
-    const [comments, setComments] = useState(DEFAULT_COMMENTS);
+    const [comments, setComments] = useState([DEFAULT_COMMENT]);
     const [nickname, setNickname] = useState('');
     const [messageInput, setMessageInput] = useState('');
-    const [hasLoaded, setHasLoaded] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [errorMessage, setErrorMessage] = useState('');
     const bottomRef = useRef(null);
 
     useEffect(() => {
-        setComments(loadComments());
-        setHasLoaded(true);
-    }, []);
+        let cancelled = false;
 
-    useEffect(() => {
-        if (!hasLoaded || typeof window === 'undefined') return;
-        try {
-            window.localStorage.setItem(STORAGE_KEY, JSON.stringify(comments.slice(-MAX_COMMENTS)));
-        } catch (error) {
-            // Ignore storage write errors and keep in-memory comments.
-        }
-    }, [comments, hasLoaded]);
+        const fetchComments = async () => {
+            setIsLoading(true);
+            setErrorMessage('');
+            try {
+                const response = await fetch(COMMENTS_ENDPOINT);
+                if (!response.ok) throw new Error(`Failed to fetch comments: ${response.status}`);
+                const payload = await response.json();
+                if (!Array.isArray(payload)) throw new Error('Invalid comments payload');
+
+                const apiComments = payload.map(normalizeApiComment).filter(Boolean);
+                if (!cancelled) setComments(buildCommentsWithWelcome(apiComments));
+            } catch (error) {
+                if (!cancelled) {
+                    setComments([DEFAULT_COMMENT]);
+                    setErrorMessage('댓글을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.');
+                }
+            } finally {
+                if (!cancelled) setIsLoading(false);
+            }
+        };
+
+        fetchComments();
+        return () => {
+            cancelled = true;
+        };
+    }, []);
 
     useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [comments]);
 
-    const handleSubmit = (event) => {
+    const handleSubmit = async (event) => {
         event.preventDefault();
         const text = messageInput.trim();
-        if (!text) return;
+        if (!text || isSubmitting) return;
 
-        const newComment = {
-            id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        const payload = {
             name: (nickname.trim() || 'Visitor').slice(0, 24),
-            text: text.slice(0, MAX_MESSAGE_LENGTH),
-            isOwner: false,
-            createdAt: new Date().toISOString()
+            message: text.slice(0, MAX_MESSAGE_LENGTH)
         };
 
-        setComments((prev) => [...prev, newComment].slice(-MAX_COMMENTS));
-        setMessageInput('');
+        setIsSubmitting(true);
+        setErrorMessage('');
+        try {
+            const response = await fetch(COMMENTS_ENDPOINT, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) throw new Error(`Failed to create comment: ${response.status}`);
+            const created = normalizeApiComment(await response.json());
+            if (!created) throw new Error('Invalid created comment payload');
+
+            setComments((prev) => {
+                const visitors = prev.filter((item) => !item.isOwner);
+                return buildCommentsWithWelcome([...visitors, created]);
+            });
+            setMessageInput('');
+        } catch (error) {
+            setErrorMessage('댓글 등록에 실패했습니다. 잠시 후 다시 시도해 주세요.');
+        } finally {
+            setIsSubmitting(false);
+        }
     };
+
+    const visitorCount = comments.filter((item) => !item.isOwner).length;
 
     return (
         <div
@@ -232,7 +266,7 @@ const IMessageApp = ({ onClose }) => {
                             color: '#3A3A3C'
                         }}
                     >
-                        Total comments: {comments.length}
+                        Total comments: {visitorCount}
                     </div>
                 </div>
             </aside>
@@ -258,9 +292,13 @@ const IMessageApp = ({ onClose }) => {
                     }}
                     onPointerDown={(event) => event.stopPropagation()}
                 >
-                    {comments.map((comment) => (
-                        <CommentBubble key={comment.id} {...comment} />
-                    ))}
+                    {isLoading ? (
+                        <div style={{ color: '#6E6E73', fontSize: '13px', textAlign: 'center', marginTop: '20px' }}>
+                            댓글 불러오는 중...
+                        </div>
+                    ) : (
+                        comments.map((comment) => <CommentBubble key={comment.id} {...comment} />)
+                    )}
                     <div ref={bottomRef} />
                 </div>
 
@@ -334,24 +372,30 @@ const IMessageApp = ({ onClose }) => {
 
                         <button
                             type="submit"
-                            disabled={!messageInput.trim()}
+                            disabled={!messageInput.trim() || isSubmitting}
                             style={{
                                 width: '36px',
                                 height: '36px',
                                 border: 'none',
                                 borderRadius: '50%',
-                                background: messageInput.trim() ? '#007AFF' : '#B0D5FF',
+                                background: messageInput.trim() && !isSubmitting ? '#007AFF' : '#B0D5FF',
                                 color: '#FFFFFF',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                cursor: messageInput.trim() ? 'pointer' : 'not-allowed'
+                                cursor: messageInput.trim() && !isSubmitting ? 'pointer' : 'not-allowed'
                             }}
                             aria-label="댓글 보내기"
                         >
                             <ArrowUp size={18} strokeWidth={2.8} />
                         </button>
                     </div>
+
+                    {errorMessage && (
+                        <div style={{ color: '#D64545', fontSize: '12px', lineHeight: 1.4 }}>
+                            {errorMessage}
+                        </div>
+                    )}
                 </form>
             </main>
         </div>
