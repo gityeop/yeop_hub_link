@@ -19,6 +19,13 @@ const Window = ({ id, isOpen, onClose, title, children, initialPosition = { x: 1
     }
   };
 
+  const handleWindowPointerDownCapture = (e) => {
+    if (props.onFocus) {
+      props.onFocus();
+    }
+    handleTopDragPointerDown(e);
+  };
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -32,9 +39,10 @@ const Window = ({ id, isOpen, onClose, title, children, initialPosition = { x: 1
            animate={{ opacity: 1, scale: 1 }}
            exit={{ opacity: 0, scale: 0.9 }}
            transition={{ type: "spring", stiffness: 300, damping: 30 }}
-           onPointerDownCapture={handleTopDragPointerDown}
+           onPointerDownCapture={handleWindowPointerDownCapture}
            style={{
               position: 'absolute',
+              zIndex: props.zIndex ?? 100,
               width: props.width || '600px',
               height: props.height || '400px',
               backgroundColor: 'var(--window-bg)',
