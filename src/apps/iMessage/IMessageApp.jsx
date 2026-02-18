@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Plus, ChevronLeft, Search, Filter, ArrowUp } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://158.179.161.109').replace(/\/+$/, '');
 const COMMENTS_ENDPOINT = `${API_BASE_URL}/api/comments`;
@@ -224,7 +224,10 @@ const IMessageApp = ({ onClose }) => {
     const [isLoading, setIsLoading] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [errorMessage, setErrorMessage] = useState('');
+    const [isNameEditorOpen, setIsNameEditorOpen] = useState(false);
+    const [nameDraft, setNameDraft] = useState('');
     const messagesEndRef = useRef(null);
+    const nameEditorRef = useRef(null);
 
     const currentMessages = allMessages[activeChat] || [];
     const currentContact = CONTACT;
@@ -243,6 +246,10 @@ const IMessageApp = ({ onClose }) => {
         } catch (error) {
             // Ignore localStorage persistence errors.
         }
+    }, [visitorName]);
+
+    useEffect(() => {
+        setNameDraft(visitorName);
     }, [visitorName]);
 
     useEffect(() => {
@@ -299,10 +306,28 @@ const IMessageApp = ({ onClose }) => {
         }, 100);
     }, [currentMessages, activeChat]);
 
-    const handleVisitorNameChange = () => {
-        const next = window.prompt('방문자 이름을 입력하세요.', visitorName);
-        if (next === null) return;
-        setVisitorName(sanitizeVisitorName(next));
+    useEffect(() => {
+        if (!isNameEditorOpen) return undefined;
+
+        const handleOutsideClick = (event) => {
+            if (!nameEditorRef.current) return;
+            if (!nameEditorRef.current.contains(event.target)) {
+                setIsNameEditorOpen(false);
+            }
+        };
+
+        document.addEventListener('mousedown', handleOutsideClick);
+        return () => document.removeEventListener('mousedown', handleOutsideClick);
+    }, [isNameEditorOpen]);
+
+    const applyVisitorName = () => {
+        setVisitorName(sanitizeVisitorName(nameDraft));
+        setIsNameEditorOpen(false);
+    };
+
+    const toggleNameEditor = () => {
+        setNameDraft(visitorName);
+        setIsNameEditorOpen((prev) => !prev);
     };
 
     const handleSend = async (event) => {
@@ -420,6 +445,29 @@ const IMessageApp = ({ onClose }) => {
                     background-color: rgba(0,0,0,0.1);
                     border-radius: 3px;
                     border: none;
+                }
+                .name-trigger-btn {
+                    width: 36px;
+                    height: 36px;
+                    border-radius: 50%;
+                    background-color: rgb(255, 255, 255);
+                    border: 1px solid rgb(229, 229, 234);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    color: #555;
+                    cursor: pointer;
+                    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+                    transition: transform 0.14s ease, background-color 0.14s ease, border-color 0.14s ease;
+                    transform: translateZ(0);
+                }
+                .name-trigger-btn:hover {
+                    transform: translateY(-1px) scale(1.04);
+                    background-color: #F8F9FB;
+                    border-color: #D7D8DE;
+                }
+                .name-trigger-btn:active {
+                    transform: scale(0.96);
                 }
             `}</style>
 
@@ -624,27 +672,105 @@ const IMessageApp = ({ onClose }) => {
                     onPointerDown={(event) => event.stopPropagation()}
                 >
                     <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                        <button
-                            type="button"
-                            onClick={handleVisitorNameChange}
-                            style={{
-                                width: '36px',
-                                height: '36px',
-                                borderRadius: '50%',
-                                backgroundColor: 'rgb(255, 255, 255)',
-                                border: '1px solid rgb(229, 229, 234)',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                color: '#555',
-                                cursor: 'pointer',
-                                flexShrink: 0,
-                                boxShadow: '0 2px 5px rgba(0,0,0,0.1)'
-                            }}
-                            title="방문자 이름 변경"
-                        >
-                            <Plus size={20} color="#333" strokeWidth={2.5} />
-                        </button>
+                        <div style={{ position: 'relative', flexShrink: 0 }} ref={nameEditorRef}>
+                            <button
+                                type="button"
+                                onClick={toggleNameEditor}
+                                className="name-trigger-btn"
+                                title="방문자 이름 변경"
+                            >
+                                <Plus
+                                    size={20}
+                                    color="#333"
+                                    strokeWidth={2.5}
+                                    style={{
+                                        transform: isNameEditorOpen ? 'rotate(45deg)' : 'rotate(0deg)',
+                                        transition: 'transform 0.18s ease'
+                                    }}
+                                />
+                            </button>
+
+                            <AnimatePresence>
+                                {isNameEditorOpen && (
+                                    <motion.div
+                                        initial={{ opacity: 0, y: 10 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        exit={{ opacity: 0, y: 6 }}
+                                        transition={{ duration: 0.16, ease: 'easeOut' }}
+                                        style={{
+                                            position: 'absolute',
+                                            bottom: '46px',
+                                            left: '-8px',
+                                            width: '220px',
+                                            background: '#fff',
+                                            borderRadius: '14px',
+                                            border: '1px solid rgba(0,0,0,0.08)',
+                                            boxShadow: '0 14px 28px rgba(0,0,0,0.18)',
+                                            padding: '10px',
+                                            zIndex: 40,
+                                            willChange: 'transform, opacity',
+                                            backfaceVisibility: 'hidden'
+                                        }}
+                                    >
+                                        <div style={{ fontSize: '11px', color: '#6E6E73', marginBottom: '6px', fontWeight: 600 }}>
+                                            Visitor name
+                                        </div>
+                                        <input
+                                            type="text"
+                                            value={nameDraft}
+                                            onChange={(event) => setNameDraft(event.target.value)}
+                                            onKeyDown={(event) => {
+                                                if (event.key === 'Enter') {
+                                                    event.preventDefault();
+                                                    applyVisitorName();
+                                                }
+                                            }}
+                                            maxLength={24}
+                                            autoFocus
+                                            style={{
+                                                width: '100%',
+                                                border: '1px solid rgba(60,60,67,0.25)',
+                                                borderRadius: '9px',
+                                                padding: '7px 9px',
+                                                fontSize: '13px',
+                                                outline: 'none'
+                                            }}
+                                        />
+                                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px', marginTop: '8px' }}>
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsNameEditorOpen(false)}
+                                                style={{
+                                                    border: 'none',
+                                                    background: 'transparent',
+                                                    color: '#6E6E73',
+                                                    fontSize: '12px',
+                                                    cursor: 'pointer',
+                                                    padding: '4px 6px'
+                                                }}
+                                            >
+                                                취소
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={applyVisitorName}
+                                                style={{
+                                                    border: 'none',
+                                                    background: '#007AFF',
+                                                    color: '#fff',
+                                                    fontSize: '12px',
+                                                    borderRadius: '8px',
+                                                    cursor: 'pointer',
+                                                    padding: '5px 9px'
+                                                }}
+                                            >
+                                                저장
+                                            </button>
+                                        </div>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+                        </div>
 
                         <div
                             style={{
