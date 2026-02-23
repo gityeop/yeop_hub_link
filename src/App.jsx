@@ -5,6 +5,7 @@ import Window from './components/Window/Window';
 import IMessageApp from './apps/iMessage/IMessageApp';
 import OnTextApp from './apps/OnText/OnTextApp';
 import FlowClipApp from './apps/FlowClip/FlowClipApp';
+import DoomApp from './apps/Doom/DoomApp';
 import './styles/global.css';
 
 function App() {
@@ -15,6 +16,7 @@ function App() {
     threads: false,
     ontext: false,
     flowclip: false,
+    doom: false,
   });
   const [windowOrder, setWindowOrder] = useState([]);
 
@@ -80,7 +82,7 @@ function App() {
   };
 
   return (
-    <Desktop>
+    <Desktop onLaunchDoom={() => handleAppClick('doom')}>
         <Window 
             id="messages" 
             title="Messages" 
@@ -124,6 +126,21 @@ function App() {
             zIndex={getWindowZIndex('flowclip')}
         >
             <FlowClipApp onClose={() => closeWindow('flowclip')} />
+        </Window>
+
+        <Window
+            id="doom"
+            title="DOOM"
+            isOpen={activeWindows.doom}
+            onClose={() => closeWindow('doom')}
+            onFocus={() => bringToFront('doom')}
+            initialPosition={{ x: 280, y: 90 }}
+            hideTitleBar={true}
+            width="1080px"
+            height="740px"
+            zIndex={getWindowZIndex('doom')}
+        >
+            <DoomApp onClose={() => closeWindow('doom')} />
         </Window>
 
         <Dock onAppClick={handleAppClick} />

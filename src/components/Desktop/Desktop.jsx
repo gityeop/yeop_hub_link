@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React from 'react';
 import '../../styles/global.css';
 import bgImage from '../../assets/bg-gemini-4.png';
+import DesktopWidgets from './DesktopWidgets';
 
-const Desktop = ({ children }) => {
+const Desktop = ({ children, onLaunchDoom }) => {
   return (
     <div 
       className="desktop-container"
@@ -34,6 +35,8 @@ const Desktop = ({ children }) => {
             pointerEvents: 'none',
             zIndex: 0
         }} />
+
+        <DesktopWidgets onLaunchDoom={onLaunchDoom} />
         
         {children}
     </div>
