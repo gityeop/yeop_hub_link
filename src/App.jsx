@@ -134,7 +134,7 @@ function App() {
             isOpen={activeWindows.doom}
             onClose={() => closeWindow('doom')}
             onFocus={() => bringToFront('doom')}
-            initialPosition={{ x: 280, y: 90 }}
+            initialPosition={{ x: 500, y: 400 }}
             hideTitleBar={true}
             width="1080px"
             height="790px"

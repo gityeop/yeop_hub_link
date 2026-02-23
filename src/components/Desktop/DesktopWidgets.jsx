@@ -1,16 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CalendarDays, Flame, Gamepad2, Github, Rocket, Timer } from 'lucide-react';
+import { CalendarDays, Flame, Github, Timer } from 'lucide-react';
 
 const GITHUB_USERNAME = 'gityeop';
 const GITHUB_CONTRIBUTIONS_URL = `https://github-contributions-api.jogruber.de/v4/${GITHUB_USERNAME}?y=last`;
 const GITHUB_MONTH_RANGE = 3;
-const COUNTER_NAMESPACE = 'gityeop-hub-link';
-const TOTAL_VISITS_HIT_URL = `https://api.countapi.xyz/hit/${COUNTER_NAMESPACE}/desktop-views`;
-const TOTAL_VISITS_GET_URL = `https://api.countapi.xyz/get/${COUNTER_NAMESPACE}/desktop-views`;
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://158.179.161.109').replace(/\/+$/, '');
+const COMMENTS_ENDPOINT = `${API_BASE_URL}/api/comments`;
+const VISIT_EVENT_NAME = '[SYSTEM_VISIT_COUNTER]';
 const VISITOR_TRACKED_AT_KEY = 'hub_link_visit_tracked_at_v1';
+const VISITOR_LOCAL_FALLBACK_KEY = 'hub_link_local_visit_counter_v1';
 const VISITOR_TRACK_DEBOUNCE_MS = 1200;
-
-const STATUS_TEXT = 'Building shared guestbook, desktop widgets, and a browser-playable DOOM launcher.';
 const FOCUS_MODES = [25, 50];
 
 const formatSeconds = (totalSeconds) => {
@@ -126,14 +125,54 @@ const selectRecentMonths = (days, months) => {
   return ordered.filter((day) => asUtcDate(day.date) >= startDate);
 };
 
-const readCounterValue = async (url) => {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`Counter API error: ${response.status}`);
-  const payload = await response.json();
-  return typeof payload?.value === 'number' ? payload.value : null;
+const isVisitEventComment = (item) => {
+  if (!item || typeof item !== 'object') return false;
+  return typeof item.name === 'string' && item.name.trim() === VISIT_EVENT_NAME;
 };
 
-const DesktopWidgets = ({ onLaunchDoom }) => {
+const trackVisitEvent = async () => {
+  const response = await fetch(COMMENTS_ENDPOINT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: VISIT_EVENT_NAME,
+      message: `visit:${new Date().toISOString()}`
+    })
+  });
+  if (!response.ok) {
+    throw new Error(`Visit track error: ${response.status}`);
+  }
+};
+
+const readVisitCount = async () => {
+  const response = await fetch(COMMENTS_ENDPOINT, { headers: { Accept: 'application/json' } });
+  if (!response.ok) throw new Error(`Visit read error: ${response.status}`);
+  const payload = await response.json();
+  if (!Array.isArray(payload)) throw new Error('Unexpected comments payload');
+  return payload.filter(isVisitEventComment).length;
+};
+
+const readLocalFallbackCount = () => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(VISITOR_LOCAL_FALLBACK_KEY);
+    const count = Number(raw || '0');
+    return Number.isFinite(count) && count > 0 ? count : 0;
+  } catch (error) {
+    return null;
+  }
+};
+
+const writeLocalFallbackCount = (nextCount) => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(VISITOR_LOCAL_FALLBACK_KEY, String(nextCount));
+  } catch (error) {
+    // ignore storage errors
+  }
+};
+
+const DesktopWidgets = () => {
   const [githubData, setGithubData] = useState({
     loading: true,
     error: '',
@@ -239,32 +278,42 @@ const DesktopWidgets = ({ onLaunchDoom }) => {
     let cancelled = false;
 
     const trackVisitors = async () => {
+      let shouldTrackVisit = true;
       try {
-        let shouldHitVisit = true;
-
         if (typeof window !== 'undefined') {
           try {
             const trackedAtRaw = window.sessionStorage.getItem(VISITOR_TRACKED_AT_KEY) || '0';
             const trackedAt = Number(trackedAtRaw);
             const now = Date.now();
+
             if (Number.isFinite(trackedAt) && now - trackedAt < VISITOR_TRACK_DEBOUNCE_MS) {
-              shouldHitVisit = false;
-            } else {
+              shouldTrackVisit = false;
+            }
+
+            if (shouldTrackVisit) {
               window.sessionStorage.setItem(VISITOR_TRACKED_AT_KEY, String(now));
             }
           } catch (error) {
-            shouldHitVisit = true;
+            shouldTrackVisit = true;
           }
         }
 
-        const visits = await readCounterValue(shouldHitVisit ? TOTAL_VISITS_HIT_URL : TOTAL_VISITS_GET_URL);
+        if (shouldTrackVisit) {
+          await trackVisitEvent();
+        }
+
+        const visits = await readVisitCount();
 
         if (!cancelled) {
           setTotalVisits(visits);
         }
       } catch (error) {
+        const currentLocalCount = readLocalFallbackCount() || 0;
+        const nextLocalCount = shouldTrackVisit ? currentLocalCount + 1 : currentLocalCount;
+        if (shouldTrackVisit) writeLocalFallbackCount(nextLocalCount);
+
         if (!cancelled) {
-          setTotalVisits(null);
+          setTotalVisits(nextLocalCount || null);
         }
       }
     };
@@ -282,15 +331,29 @@ const DesktopWidgets = ({ onLaunchDoom }) => {
         .desktop-widgets-layer {
           position: absolute;
           top: 18px;
+          left: 18px;
           right: 18px;
-          width: min(400px, calc(100vw - 28px));
           z-index: 30;
           pointer-events: none;
         }
-        .desktop-widgets-grid {
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
+        .desktop-widgets-layout {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
           gap: 10px;
+        }
+        .desktop-widgets-left {
+          display: grid;
+          grid-template-columns: auto auto;
+          gap: 10px;
+          width: fit-content;
+          align-items: start;
+        }
+        .desktop-widgets-right {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 10px;
+          width: min(220px, 100%);
         }
         .desktop-widget-card {
           pointer-events: auto;
@@ -309,8 +372,8 @@ const DesktopWidgets = ({ onLaunchDoom }) => {
           width: fit-content;
           max-width: 100%;
         }
-        .desktop-widget-wide {
-          grid-column: 1 / -1;
+        .desktop-widget-calendar {
+          width: 220px;
         }
         .desktop-widget-title {
           display: flex;
@@ -419,168 +482,147 @@ const DesktopWidgets = ({ onLaunchDoom }) => {
           .desktop-widgets-layer {
             left: 14px;
             right: 14px;
-            width: auto;
             top: 14px;
           }
-          .desktop-widgets-grid {
+          .desktop-widgets-layout {
+            flex-direction: column;
+            align-items: stretch;
+          }
+          .desktop-widgets-left {
             grid-template-columns: 1fr;
+            width: 100%;
           }
-          .desktop-widget-wide {
-            grid-column: auto;
+          .desktop-widgets-right {
+            width: 100%;
           }
-          .desktop-widget-github {
-            justify-self: stretch;
+          .desktop-widget-calendar, .desktop-widget-github {
             width: auto;
           }
         }
       `}</style>
 
-      <div className="desktop-widgets-grid">
-        <section className="desktop-widget-card desktop-widget-github">
-          <div className="desktop-widget-title">
-            <Github size={14} />
-            GitHub Activity
-          </div>
-
-          <div className="desktop-gh-chart">
-            <div className="desktop-gh-heatmap">
-              {githubWeeks.map((week, weekIndex) => (
-                <div key={`week-${weekIndex}`} className="desktop-gh-week-column">
-                  {week.map((day) => (
-                    <div
-                      key={day.key}
-                      className={`desktop-gh-day ${day.inRange ? '' : 'is-out-of-range'} ${shouldShowGithubPlaceholder ? 'is-placeholder' : ''}`}
-                      style={
-                        !shouldShowGithubPlaceholder && day.inRange
-                          ? { background: contributionColor(day.count, githubData.levels) }
-                          : undefined
-                      }
-                      title={!shouldShowGithubPlaceholder && day.inRange ? `${day.date}: ${day.count} contributions` : ''}
-                    />
-                  ))}
-                </div>
-              ))}
+      <div className="desktop-widgets-layout">
+        <div className="desktop-widgets-left">
+          <section className="desktop-widget-card desktop-widget-calendar">
+            <div className="desktop-widget-title">
+              <CalendarDays size={14} />
+              {monthLabel}
             </div>
-          </div>
-        </section>
 
-        <section className="desktop-widget-card">
-          <div className="desktop-widget-title">
-            <Flame size={14} />
-            Visitors
-          </div>
-          <div className="desktop-widget-metric">{typeof totalVisits === 'number' ? totalVisits : '--'}</div>
-          <div className="desktop-widget-subtle">Total visits</div>
-          <div className="desktop-widget-subtle" style={{ marginTop: '8px' }}>
-            {STATUS_TEXT}
-          </div>
-        </section>
-
-        <section className="desktop-widget-card">
-          <div className="desktop-widget-title">
-            <Gamepad2 size={14} />
-            DOOM.EXE
-          </div>
-          <div className="desktop-widget-subtle" style={{ marginBottom: '12px' }}>
-            Shareware DOOM runs in a dedicated window with fullscreen support.
-          </div>
-          <button
-            type="button"
-            className="desktop-widget-button is-primary"
-            onClick={onLaunchDoom}
-          >
-            Run DOOM
-          </button>
-        </section>
-
-        <section className="desktop-widget-card">
-          <div className="desktop-widget-title">
-            <CalendarDays size={14} />
-            {monthLabel}
-          </div>
-
-          <div className="desktop-calendar-grid">
-            {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day) => (
-              <div key={day} className="desktop-calendar-weekday">
-                {day}
-              </div>
-            ))}
-
-            {calendarCells.map((day, idx) =>
-              day ? (
-                <div
-                  key={`${day}-${idx}`}
-                  className={`desktop-calendar-day ${day === todayNumber ? 'is-today' : ''}`}
-                >
+            <div className="desktop-calendar-grid">
+              {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day) => (
+                <div key={day} className="desktop-calendar-weekday">
                   {day}
                 </div>
-              ) : (
-                <div key={`empty-${idx}`} />
-              )
-            )}
-          </div>
-        </section>
+              ))}
 
-        <section className="desktop-widget-card">
-          <div className="desktop-widget-title">
-            <Timer size={14} />
-            Focus Timer
-          </div>
+              {calendarCells.map((day, idx) =>
+                day ? (
+                  <div
+                    key={`${day}-${idx}`}
+                    className={`desktop-calendar-day ${day === todayNumber ? 'is-today' : ''}`}
+                  >
+                    {day}
+                  </div>
+                ) : (
+                  <div key={`empty-${idx}`} />
+                )
+              )}
+            </div>
+          </section>
 
-          <div style={{ display: 'flex', gap: '6px', marginBottom: '10px' }}>
-            {FOCUS_MODES.map((mode) => (
+          <section className="desktop-widget-card desktop-widget-github">
+            <div className="desktop-widget-title">
+              <Github size={14} />
+              GitHub Activity
+            </div>
+
+            <div className="desktop-gh-chart">
+              <div className="desktop-gh-heatmap">
+                {githubWeeks.map((week, weekIndex) => (
+                  <div key={`week-${weekIndex}`} className="desktop-gh-week-column">
+                    {week.map((day) => (
+                      <div
+                        key={day.key}
+                        className={`desktop-gh-day ${day.inRange ? '' : 'is-out-of-range'} ${shouldShowGithubPlaceholder ? 'is-placeholder' : ''}`}
+                        style={
+                          !shouldShowGithubPlaceholder && day.inRange
+                            ? { background: contributionColor(day.count, githubData.levels) }
+                            : undefined
+                        }
+                        title={!shouldShowGithubPlaceholder && day.inRange ? `${day.date}: ${day.count} contributions` : ''}
+                      />
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div className="desktop-widgets-right">
+          <section className="desktop-widget-card">
+            <div className="desktop-widget-title">
+              <Flame size={14} />
+              Visitors
+            </div>
+            <div className="desktop-widget-metric">{typeof totalVisits === 'number' ? totalVisits : '--'}</div>
+            <div className="desktop-widget-subtle">Total visits</div>
+          </section>
+
+          <section className="desktop-widget-card">
+            <div className="desktop-widget-title">
+              <Timer size={14} />
+              Focus Timer
+            </div>
+
+            <div style={{ display: 'flex', gap: '6px', marginBottom: '10px' }}>
+              {FOCUS_MODES.map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  className="desktop-widget-button"
+                  onClick={() => setFocusMode(mode)}
+                  style={{
+                    flex: 1,
+                    background: focusMode === mode ? 'rgba(59, 130, 246, 0.5)' : 'rgba(255, 255, 255, 0.1)'
+                  }}
+                >
+                  {mode}m
+                </button>
+              ))}
+            </div>
+
+            <div className="desktop-widget-metric" style={{ marginBottom: '10px' }}>
+              {formatSeconds(secondsLeft)}
+            </div>
+
+            <div style={{ display: 'flex', gap: '6px' }}>
               <button
-                key={mode}
+                type="button"
+                className="desktop-widget-button is-primary"
+                onClick={() => setIsTimerRunning((prev) => !prev)}
+                style={{ flex: 1 }}
+              >
+                {isTimerRunning ? 'Pause' : 'Start'}
+              </button>
+              <button
                 type="button"
                 className="desktop-widget-button"
-                onClick={() => setFocusMode(mode)}
-                style={{
-                  flex: 1,
-                  background: focusMode === mode ? 'rgba(59, 130, 246, 0.5)' : 'rgba(255, 255, 255, 0.1)'
+                onClick={() => {
+                  setIsTimerRunning(false);
+                  setSecondsLeft(focusMode * 60);
                 }}
+                style={{ flex: 1 }}
               >
-                {mode}m
+                Reset
               </button>
-            ))}
-          </div>
-
-          <div className="desktop-widget-metric" style={{ marginBottom: '10px' }}>
-            {formatSeconds(secondsLeft)}
-          </div>
-
-          <div style={{ display: 'flex', gap: '6px' }}>
-            <button
-              type="button"
-              className="desktop-widget-button is-primary"
-              onClick={() => setIsTimerRunning((prev) => !prev)}
-              style={{ flex: 1 }}
-            >
-              {isTimerRunning ? 'Pause' : 'Start'}
-            </button>
-            <button
-              type="button"
-              className="desktop-widget-button"
-              onClick={() => {
-                setIsTimerRunning(false);
-                setSecondsLeft(focusMode * 60);
-              }}
-              style={{ flex: 1 }}
-            >
-              Reset
-            </button>
-          </div>
-          <div className="desktop-widget-subtle" style={{ marginTop: '8px' }}>
-            {secondsLeft === 0 ? 'Session complete. Take a short break.' : 'Choose 25m or 50m focus mode.'}
-          </div>
-        </section>
-
-        <section className="desktop-widget-card">
-          <div className="desktop-widget-title">
-            <Rocket size={14} />
-            Now Building
-          </div>
-          <div className="desktop-widget-subtle">{STATUS_TEXT}</div>
-        </section>
+            </div>
+            <div className="desktop-widget-subtle" style={{ marginTop: '8px' }}>
+              {secondsLeft === 0 ? 'Session complete. Take a short break.' : 'Choose 25m or 50m focus mode.'}
+            </div>
+          </section>
+        </div>
       </div>
     </div>
   );

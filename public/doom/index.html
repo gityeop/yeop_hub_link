@@ -46,12 +46,44 @@
 
       let ci = null;
       const pressedRemappedCodes = new Set();
+      let stdoutTail = "";
+      let hasRequestedClose = false;
+      const bootedAt = Date.now();
+
+      const requestParentClose = () => {
+        if (hasRequestedClose) return;
+        hasRequestedClose = true;
+        try {
+          window.parent.postMessage({ type: "hub-link-doom-exit" }, window.location.origin);
+        } catch (error) {
+          window.parent.postMessage({ type: "hub-link-doom-exit" }, "*");
+        }
+      };
 
       const dos = Dos(root, { style: "none" });
       dos
         .run("./doom.jsdos")
         .then((commandInterface) => {
           ci = commandInterface;
+          if (ci && typeof ci.events === "function") {
+            const events = ci.events();
+            if (events && typeof events.onExit === "function") {
+              events.onExit(() => {
+                requestParentClose();
+              });
+            }
+            if (events && typeof events.onStdout === "function") {
+              events.onStdout((chunk) => {
+                if (typeof chunk !== "string") return;
+                stdoutTail = `${stdoutTail}${chunk}`.slice(-240);
+                const normalized = stdoutTail.replace(/\r/g, "");
+                const isDosPrompt = /[A-Za-z]:\\>\s*$/.test(normalized);
+                if (Date.now() - bootedAt > 1500 && isDosPrompt) {
+                  requestParentClose();
+                }
+              });
+            }
+          }
           root.focus();
         })
         .catch((error) => {

@@ -9,6 +9,7 @@ const MAX_MESSAGE_LENGTH = 300;
 
 const OWNER_DISPLAY_NAME = 'Lim Sang Yeob';
 const OWNER_NAME_TAG = '[OWNER]';
+const VISIT_EVENT_NAME = '[SYSTEM_VISIT_COUNTER]';
 
 const VISITOR_NAME_KEY = 'hub_link_visitor_name_v1';
 const HIDDEN_IDS_KEY = 'hub_link_hidden_comment_ids_v1';
@@ -81,6 +82,8 @@ const normalizeApiComment = (value) => {
     if (typeof messageRaw !== 'string' || typeof createdAtRaw !== 'string') return null;
 
     const rawName = nameRaw.trim();
+    if (rawName === VISIT_EVENT_NAME) return null;
+
     const isOwner = rawName.startsWith(OWNER_NAME_TAG);
     const displayName = isOwner ? rawName.slice(OWNER_NAME_TAG.length).trim() || OWNER_DISPLAY_NAME : sanitizeVisitorName(rawName);
 

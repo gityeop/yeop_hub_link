@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ExternalLink, RotateCcw } from 'lucide-react';
 
 const DOOM_LOCAL_PATH = `${import.meta.env.BASE_URL}doom/index.html`;
@@ -16,6 +16,18 @@ const CONTROL_HINTS = [
 const DoomApp = ({ onClose }) => {
   const [reloadVersion, setReloadVersion] = useState(0);
   const iframeSrc = useMemo(() => DOOM_LOCAL_PATH, []);
+  const iframeRef = useRef(null);
+
+  useEffect(() => {
+    const handleWindowMessage = (event) => {
+      if (event?.data?.type !== 'hub-link-doom-exit') return;
+      if (event.source !== iframeRef.current?.contentWindow) return;
+      onClose?.();
+    };
+
+    window.addEventListener('message', handleWindowMessage);
+    return () => window.removeEventListener('message', handleWindowMessage);
+  }, [onClose]);
 
   return (
     <div
@@ -153,6 +165,7 @@ const DoomApp = ({ onClose }) => {
             >
               <iframe
                 key={reloadVersion}
+                ref={iframeRef}
                 src={iframeSrc}
                 title="DOOM"
                 loading="lazy"

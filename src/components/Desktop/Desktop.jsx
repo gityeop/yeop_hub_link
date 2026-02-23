@@ -53,8 +53,9 @@ const Desktop = ({ children, onLaunchDoom }) => {
             title="Double-click to run DOOM"
             style={{
               position: 'absolute',
-              top: '18px',
-              left: '22px',
+              top: '48%',
+              left: '36%',
+              transform: 'translate(-50%, -50%)',
               width: '92px',
               display: 'flex',
               flexDirection: 'column',
