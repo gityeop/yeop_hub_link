@@ -25,9 +25,82 @@
     <div id="jsdos"></div>
     <script>
       emulators.pathPrefix = "./js-dos/";
-      Dos(document.getElementById("jsdos"), {
-        style: "none"
-      }).run("./doom.jsdos");
+      const root = document.getElementById("jsdos");
+      root.tabIndex = 0;
+
+      const KBD_UP = 265;
+      const KBD_LEFT = 263;
+      const KBD_DOWN = 264;
+      const KBD_RIGHT = 262;
+      const KBD_LEFT_CTRL = 341;
+
+      const remapTable = {
+        KeyW: KBD_UP,
+        KeyA: KBD_LEFT,
+        KeyS: KBD_DOWN,
+        KeyD: KBD_RIGHT,
+        MetaLeft: KBD_LEFT_CTRL,
+        MetaRight: KBD_LEFT_CTRL,
+        KeyJ: KBD_LEFT_CTRL
+      };
+
+      let ci = null;
+      const pressedRemappedCodes = new Set();
+
+      const dos = Dos(root, { style: "none" });
+      dos
+        .run("./doom.jsdos")
+        .then((commandInterface) => {
+          ci = commandInterface;
+          root.focus();
+        })
+        .catch((error) => {
+          console.error("[doom] failed to start", error);
+        });
+
+      const sendMappedKey = (keyCode, pressed) => {
+        if (!ci || typeof ci.sendKeyEvent !== "function") return;
+        ci.sendKeyEvent(keyCode, pressed);
+      };
+
+      const releaseAllMappedKeys = () => {
+        if (pressedRemappedCodes.size === 0) return;
+        for (const code of pressedRemappedCodes) {
+          const mappedKeyCode = remapTable[code];
+          if (mappedKeyCode !== undefined) sendMappedKey(mappedKeyCode, false);
+        }
+        pressedRemappedCodes.clear();
+      };
+
+      const remapKeyEvent = (event, pressed) => {
+        if (!event.isTrusted) return;
+        const mappedKeyCode = remapTable[event.code];
+        if (mappedKeyCode === undefined) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+        root.focus();
+
+        if (pressed) {
+          if (pressedRemappedCodes.has(event.code)) return;
+          pressedRemappedCodes.add(event.code);
+          sendMappedKey(mappedKeyCode, true);
+          return;
+        }
+
+        if (!pressedRemappedCodes.has(event.code)) return;
+        pressedRemappedCodes.delete(event.code);
+        sendMappedKey(mappedKeyCode, false);
+      };
+
+      window.addEventListener("keydown", (event) => remapKeyEvent(event, true), true);
+      window.addEventListener("keyup", (event) => remapKeyEvent(event, false), true);
+      window.addEventListener("blur", releaseAllMappedKeys, true);
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) releaseAllMappedKeys();
+      });
+      window.addEventListener("pointerdown", () => root.focus(), true);
+      window.addEventListener("load", () => root.focus(), { once: true });
     </script>
   </body>
 </html>

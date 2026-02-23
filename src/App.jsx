@@ -137,7 +137,7 @@ function App() {
             initialPosition={{ x: 280, y: 90 }}
             hideTitleBar={true}
             width="1080px"
-            height="740px"
+            height="790px"
             zIndex={getWindowZIndex('doom')}
         >
             <DoomApp onClose={() => closeWindow('doom')} />
