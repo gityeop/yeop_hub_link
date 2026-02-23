@@ -2,30 +2,32 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ActionPanel from './ActionPanel';
 
+const onTextDemoAsset = (fileName) => `${import.meta.env.BASE_URL}ontext-demo/${fileName}`;
+
 const introPreviewCards = [
     {
         title: 'Inline AI (BYOK)',
-        mediaSrc: '/ontext-demo/inline_ai.mp4',
+        mediaSrc: onTextDemoAsset('inline_ai.mp4'),
         description: 'Edit or rewrite selected text inline without context switching.'
     },
     {
         title: 'URL Action Search',
-        mediaSrc: '/ontext-demo/url_action.mp4',
+        mediaSrc: onTextDemoAsset('url_action.mp4'),
         description: 'Send selected text to Google, Brave, DuckDuckGo, or YouTube instantly.'
     },
     {
         title: 'Prompt Relay',
-        mediaSrc: '/ontext-demo/prompt_panel.mp4',
+        mediaSrc: onTextDemoAsset('prompt_panel.mp4'),
         description: 'Forward text with preset prompts to ChatGPT, Gemini, or Claude.'
     },
     {
         title: 'Bi-directional Translate',
-        mediaSrc: '/ontext-demo/translation.mp4',
+        mediaSrc: onTextDemoAsset('translation.mp4'),
         description: 'Translate in both directions and keep source context.'
     },
     {
         title: 'Case Converting',
-        mediaSrc: '/ontext-demo/caseConverting.mp4',
+        mediaSrc: onTextDemoAsset('caseConverting.mp4'),
         description: 'Convert quickly to camel, pascal, snake, kebab, constant, and dot case.'
     }
 ];
@@ -80,43 +82,43 @@ const OnTextApp = ({ onClose }) => {
             case 'Inline AI (BYOK)':
                 return {
                     mediaType: 'video',
-                    mediaSrc: '/ontext-demo/inline_ai.mp4',
+                    mediaSrc: onTextDemoAsset('inline_ai.mp4'),
                     description: 'Run inline AI with your own API key, without leaving the current context.'
                 };
             case 'URL Action Search':
                 return {
                     mediaType: 'video',
-                    mediaSrc: '/ontext-demo/url_action.mp4',
+                    mediaSrc: onTextDemoAsset('url_action.mp4'),
                     description: 'Trigger URL actions to search instantly in Google, Brave, DuckDuckGo, YouTube, and more.'
                 };
             case 'Prompt Relay':
                 return {
                     mediaType: 'video',
-                    mediaSrc: '/ontext-demo/prompt_panel.mp4',
+                    mediaSrc: onTextDemoAsset('prompt_panel.mp4'),
                     description: 'Send selected text to ChatGPT, Gemini, or Claude with predefined prompts.'
                 };
             case 'Bi-directional Translate':
                 return {
                     mediaType: 'video',
-                    mediaSrc: '/ontext-demo/translation.mp4',
+                    mediaSrc: onTextDemoAsset('translation.mp4'),
                     description: 'Translate selected text in both directions and compare source and target instantly.'
                 };
             case 'Case Converting':
                 return {
                     mediaType: 'video',
-                    mediaSrc: '/ontext-demo/caseConverting.mp4',
+                    mediaSrc: onTextDemoAsset('caseConverting.mp4'),
                     description: 'Convert to camelCase, PascalCase, snake_case, kebab-case, CONSTANT_CASE, and dot.case.'
                 };
             case 'Shell/AppleScript Workflow':
                 return {
                     mediaType: 'video',
-                    mediaSrc: '/ontext-demo/shell_script.mp4',
+                    mediaSrc: onTextDemoAsset('shell_script.mp4'),
                     description: 'Build personal workflows with shell scripts or AppleScript and run them on selected text.'
                 };
             case 'Shortcut Action':
                 return {
                     mediaType: 'video',
-                    mediaSrc: '/ontext-demo/shortcuts.mp4',
+                    mediaSrc: onTextDemoAsset('shortcuts.mp4'),
                     description: 'Trigger Apple Shortcuts actions directly, so OnText can integrate with your existing automations.'
                 };
             default:
