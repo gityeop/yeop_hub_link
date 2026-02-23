@@ -431,7 +431,9 @@ const IMessageApp = ({ onClose }) => {
         const confirmed = window.confirm('이 메시지를 삭제할까요?');
         if (!confirmed) return;
 
-        const entered = window.prompt('비밀번호를 입력해주세요.');
+        const entered = window.prompt(
+            message.isOwner ? '마스터 비밀번호를 입력해주세요.' : '비밀번호를 입력해주세요.'
+        );
         if (entered === null) return;
 
         const password = entered.trim();
@@ -441,27 +443,33 @@ const IMessageApp = ({ onClose }) => {
         }
 
         setErrorMessage('');
-        let serverDeleted = false;
+        let canApplyLocalDelete = false;
 
         try {
             const response = await fetch(`${COMMENTS_ENDPOINT}/${message.serverId}`, {
                 method: 'DELETE',
-                headers: {
-                    [OWNER_PASSWORD_HEADER]: password,
-                    [COMMENT_PASSWORD_HEADER]: password
-                }
+                headers: message.isOwner
+                    ? { [OWNER_PASSWORD_HEADER]: password }
+                    : { [COMMENT_PASSWORD_HEADER]: password }
             });
 
             if (response.ok) {
-                serverDeleted = true;
+                canApplyLocalDelete = true;
+            } else if (response.status === 404) {
+                canApplyLocalDelete = true;
             } else if (response.status === 401 || response.status === 403) {
-                setErrorMessage('삭제 비밀번호가 올바르지 않습니다.');
+                setErrorMessage(message.isOwner ? '마스터 비밀번호가 올바르지 않습니다.' : '삭제 비밀번호가 올바르지 않습니다.');
                 return;
-            } else if (response.status !== 404) {
+            } else {
                 throw new Error(`Failed to delete comment: ${response.status}`);
             }
         } catch (error) {
-            // Keep local hide behavior below even if request fails.
+            setErrorMessage('삭제에 실패했습니다. 잠시 후 다시 시도해 주세요.');
+            return;
+        }
+
+        if (!canApplyLocalDelete) {
+            return;
         }
 
         setAllMessages((prev) => ({
@@ -469,10 +477,6 @@ const IMessageApp = ({ onClose }) => {
             [CHAT_ID]: (prev[CHAT_ID] || []).filter((item) => item.id !== message.id)
         }));
         setHiddenCommentIds((prev) => (prev.includes(message.serverId) ? prev : [...prev, message.serverId]));
-
-        if (!serverDeleted) {
-            setErrorMessage('서버 삭제 API가 아직 없어 현재 브라우저에서만 숨김 처리되었습니다.');
-        }
     };
 
     return (
