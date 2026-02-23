@@ -329,7 +329,7 @@ const DesktopWidgets = () => {
     <div className="desktop-widgets-layer" data-no-drag>
       <style>{`
         .desktop-widgets-layer {
-          position: absolute;
+          position: fixed;
           top: 18px;
           left: 18px;
           right: 18px;

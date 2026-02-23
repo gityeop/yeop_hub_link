@@ -40,7 +40,6 @@ const DoomApp = ({ onClose }) => {
       }}
     >
       <div
-        data-no-drag
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -49,10 +48,11 @@ const DoomApp = ({ onClose }) => {
           padding: '0 14px',
           borderBottom: '1px solid rgba(255,255,255,0.1)',
           background: 'rgba(11, 14, 18, 0.75)',
-          backdropFilter: 'blur(8px)'
+          backdropFilter: 'blur(8px)',
+          cursor: 'grab'
         }}
       >
-        <div className="window-controls" style={{ display: 'flex', gap: '8px' }}>
+        <div className="window-controls" data-no-drag style={{ display: 'flex', gap: '8px' }}>
           <div
             onClick={onClose}
             style={{
