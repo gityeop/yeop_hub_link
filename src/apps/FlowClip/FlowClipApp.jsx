@@ -1,5 +1,7 @@
 import React from 'react';
 
+const flowClipDemoAsset = (fileName) => `${import.meta.env.BASE_URL}flowclip-demo/${fileName}`;
+
 const FlowClipApp = ({ onClose }) => {
   return (
     <div
@@ -122,7 +124,7 @@ const FlowClipApp = ({ onClose }) => {
             </div>
             <div style={{ borderRadius: '10px', overflow: 'hidden', border: '1px solid #E5E7EB' }}>
               <img
-                src="/flowclip-demo/maccy_demo.gif"
+                src={flowClipDemoAsset('maccy_demo.gif')}
                 alt="Basic clipboard demo"
                 style={{ width: '100%', height: '180px', objectFit: 'cover', display: 'block' }}
               />
@@ -146,7 +148,7 @@ const FlowClipApp = ({ onClose }) => {
             </div>
             <div style={{ borderRadius: '10px', overflow: 'hidden', border: '1px solid #E5E7EB' }}>
               <img
-                src="/flowclip-demo/product_demo.gif"
+                src={flowClipDemoAsset('product_demo.gif')}
                 alt="Queue clipboard demo"
                 style={{ width: '100%', height: '180px', objectFit: 'cover', display: 'block' }}
               />
