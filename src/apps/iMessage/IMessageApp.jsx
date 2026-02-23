@@ -6,6 +6,8 @@ const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://158.179.161.1
 const COMMENTS_ENDPOINT = `${API_BASE_URL}/api/comments`;
 const CHAT_ID = 1;
 const MAX_MESSAGE_LENGTH = 300;
+const OWNER_PASSWORD_HEADER = 'X-Owner-Password';
+const COMMENT_PASSWORD_HEADER = 'X-Comment-Password';
 
 const OWNER_DISPLAY_NAME = 'Lim Sang Yeob';
 const OWNER_NAME_TAG = '[OWNER]';
@@ -77,6 +79,7 @@ const normalizeApiComment = (value) => {
     const nameRaw = value.name;
     const messageRaw = value.message ?? value.text;
     const createdAtRaw = value.created_at ?? value.createdAt;
+    const ownerFlagRaw = value.is_owner ?? value.isOwner;
 
     if ((typeof idRaw !== 'number' && typeof idRaw !== 'string') || typeof nameRaw !== 'string') return null;
     if (typeof messageRaw !== 'string' || typeof createdAtRaw !== 'string') return null;
@@ -84,8 +87,10 @@ const normalizeApiComment = (value) => {
     const rawName = nameRaw.trim();
     if (rawName === VISIT_EVENT_NAME) return null;
 
-    const isOwner = rawName.startsWith(OWNER_NAME_TAG);
-    const displayName = isOwner ? rawName.slice(OWNER_NAME_TAG.length).trim() || OWNER_DISPLAY_NAME : sanitizeVisitorName(rawName);
+    const ownerByName = rawName.startsWith(OWNER_NAME_TAG);
+    const isOwner = typeof ownerFlagRaw === 'boolean' ? ownerFlagRaw : ownerByName;
+    const ownerName = ownerByName ? rawName.slice(OWNER_NAME_TAG.length).trim() : rawName;
+    const displayName = isOwner ? ownerName || OWNER_DISPLAY_NAME : sanitizeVisitorName(rawName);
 
     return {
         id: String(idRaw),
@@ -94,6 +99,21 @@ const normalizeApiComment = (value) => {
         createdAt: createdAtRaw,
         isOwner
     };
+};
+
+const compareCommentsByOldest = (left, right) => {
+    const leftTime = Date.parse(left.createdAt);
+    const rightTime = Date.parse(right.createdAt);
+
+    const safeLeft = Number.isNaN(leftTime) ? 0 : leftTime;
+    const safeRight = Number.isNaN(rightTime) ? 0 : rightTime;
+    if (safeLeft !== safeRight) return safeLeft - safeRight;
+
+    const leftId = Number(left.id);
+    const rightId = Number(right.id);
+    const safeLeftId = Number.isNaN(leftId) ? 0 : leftId;
+    const safeRightId = Number.isNaN(rightId) ? 0 : rightId;
+    return safeLeftId - safeRightId;
 };
 
 const toMessage = (comment) => {
@@ -281,6 +301,7 @@ const IMessageApp = ({ onClose }) => {
                     .map(normalizeApiComment)
                     .filter(Boolean)
                     .filter((comment) => !hiddenSet.has(comment.id))
+                    .sort(compareCommentsByOldest)
                     .map((comment) => toMessage(comment));
 
                 if (!cancelled) {
@@ -337,36 +358,53 @@ const IMessageApp = ({ onClose }) => {
         event.preventDefault();
         if (!inputValue.trim() || isSubmitting) return;
 
-        const entered = window.prompt(
-            '주인 메시지는 비밀번호를 입력하세요.\n방문자는 비워두고 확인을 누르세요.',
+        const enteredPasswordInput = window.prompt(
+            '비밀번호를 입력해주세요.',
             ''
         );
-        if (entered === null) return;
+        if (enteredPasswordInput === null) return;
 
-        const password = entered.trim();
-        const isOwnerMessage = password.length > 0;
+        const enteredPassword = enteredPasswordInput.trim();
+        if (!enteredPassword) {
+            setErrorMessage('비밀번호를 입력해 주세요.');
+            return;
+        }
 
         const safeVisitorName = sanitizeVisitorName(visitorName);
-        const payload = {
-            name: isOwnerMessage ? `${OWNER_NAME_TAG}${OWNER_DISPLAY_NAME}` : safeVisitorName,
-            message: inputValue.trim().slice(0, MAX_MESSAGE_LENGTH)
-        };
+        const messageText = inputValue.trim().slice(0, MAX_MESSAGE_LENGTH);
 
         setIsSubmitting(true);
         setErrorMessage('');
 
         try {
-            const response = await fetch(COMMENTS_ENDPOINT, {
+            let response = await fetch(COMMENTS_ENDPOINT, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    ...(isOwnerMessage ? { 'X-Owner-Password': password } : {})
+                    [OWNER_PASSWORD_HEADER]: enteredPassword
                 },
-                body: JSON.stringify(payload)
+                body: JSON.stringify({
+                    name: `${OWNER_NAME_TAG}${OWNER_DISPLAY_NAME}`,
+                    message: messageText
+                })
             });
 
             if (response.status === 401 || response.status === 403) {
-                setErrorMessage('비밀번호가 올바르지 않습니다.');
+                response = await fetch(COMMENTS_ENDPOINT, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        name: safeVisitorName,
+                        message: messageText,
+                        delete_password: enteredPassword
+                    })
+                });
+            }
+
+            if (response.status === 401 || response.status === 403) {
+                setErrorMessage('비밀번호를 확인해 주세요.');
                 return;
             }
 
@@ -393,7 +431,7 @@ const IMessageApp = ({ onClose }) => {
         const confirmed = window.confirm('이 메시지를 삭제할까요?');
         if (!confirmed) return;
 
-        const entered = window.prompt('삭제 비밀번호를 입력하세요.');
+        const entered = window.prompt('비밀번호를 입력해주세요.');
         if (entered === null) return;
 
         const password = entered.trim();
@@ -408,7 +446,10 @@ const IMessageApp = ({ onClose }) => {
         try {
             const response = await fetch(`${COMMENTS_ENDPOINT}/${message.serverId}`, {
                 method: 'DELETE',
-                headers: { 'X-Owner-Password': password }
+                headers: {
+                    [OWNER_PASSWORD_HEADER]: password,
+                    [COMMENT_PASSWORD_HEADER]: password
+                }
             });
 
             if (response.ok) {
