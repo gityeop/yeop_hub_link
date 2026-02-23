@@ -4,6 +4,7 @@ import { CalendarDays, Flame, Github, Timer } from 'lucide-react';
 const GITHUB_USERNAME = 'gityeop';
 const GITHUB_CONTRIBUTIONS_URL = `https://github-contributions-api.jogruber.de/v4/${GITHUB_USERNAME}?y=last`;
 const GITHUB_MONTH_RANGE = 3;
+const GITHUB_REFRESH_INTERVAL_MS = 60 * 1000;
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://158.179.161.109').replace(/\/+$/, '');
 const COMMENTS_ENDPOINT = `${API_BASE_URL}/api/comments`;
 const VISIT_EVENT_NAME = '[SYSTEM_VISIT_COUNTER]';
@@ -227,11 +228,20 @@ const DesktopWidgets = () => {
 
   useEffect(() => {
     let cancelled = false;
+    let isFetching = false;
+    let activeController = null;
 
     const fetchGithubActivity = async () => {
+      if (isFetching) return;
+      isFetching = true;
+      const controller = new AbortController();
+      activeController = controller;
+
       try {
-        const contributionResponse = await fetch(GITHUB_CONTRIBUTIONS_URL, {
-          headers: { Accept: 'application/json' }
+        const contributionResponse = await fetch(`${GITHUB_CONTRIBUTIONS_URL}&_=${Date.now()}`, {
+          headers: { Accept: 'application/json' },
+          cache: 'no-store',
+          signal: controller.signal
         });
         if (!contributionResponse.ok) {
           throw new Error(`GitHub contributions API error: ${contributionResponse.status}`);
@@ -257,20 +267,49 @@ const DesktopWidgets = () => {
           });
         }
       } catch (error) {
+        if (error?.name === 'AbortError') return;
         if (!cancelled) {
-          setGithubData((prev) => ({
-            ...prev,
-            loading: false,
-            error: 'GitHub contribution data is unavailable right now.'
-          }));
+          setGithubData((prev) => {
+            if (prev.weeks.length > 0) {
+              return { ...prev, loading: false, error: '' };
+            }
+            return {
+              ...prev,
+              loading: false,
+              error: 'GitHub contribution data is unavailable right now.'
+            };
+          });
         }
+      } finally {
+        if (activeController === controller) {
+          activeController = null;
+        }
+        isFetching = false;
       }
     };
+
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      fetchGithubActivity();
+    }, GITHUB_REFRESH_INTERVAL_MS);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') return;
+      fetchGithubActivity();
+    };
+    const handleWindowFocus = () => fetchGithubActivity();
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleWindowFocus);
 
     fetchGithubActivity();
 
     return () => {
       cancelled = true;
+      if (activeController) activeController.abort();
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleWindowFocus);
     };
   }, []);
 
