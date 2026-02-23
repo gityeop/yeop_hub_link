@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>DOOM</title>
+    <style>
+      html,
+      body,
+      #jsdos {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        background: #000;
+      }
+      body {
+        overflow: hidden;
+      }
+    </style>
+    <link rel="stylesheet" href="./js-dos/js-dos.css" />
+    <script src="./js-dos/js-dos.js"></script>
+  </head>
+  <body>
+    <div id="jsdos"></div>
+    <script>
+      emulators.pathPrefix = "./js-dos/";
+      const root = document.getElementById("jsdos");
+      root.tabIndex = 0;
+
+      const KBD_UP = 265;
+      const KBD_LEFT = 263;
+      const KBD_DOWN = 264;
+      const KBD_RIGHT = 262;
+      const KBD_LEFT_CTRL = 341;
+
+      const remapTable = {
+        KeyW: KBD_UP,
+        KeyA: KBD_LEFT,
+        KeyS: KBD_DOWN,
+        KeyD: KBD_RIGHT,
+        MetaLeft: KBD_LEFT_CTRL,
+        MetaRight: KBD_LEFT_CTRL,
+        KeyJ: KBD_LEFT_CTRL
+      };
+
+      let ci = null;
+      const pressedRemappedCodes = new Set();
+      let stdoutTail = "";
+      let hasRequestedClose = false;
+      const bootedAt = Date.now();
+
+      const requestParentClose = () => {
+        if (hasRequestedClose) return;
+        hasRequestedClose = true;
+        try {
+          window.parent.postMessage({ type: "hub-link-doom-exit" }, window.location.origin);
+        } catch (error) {
+          window.parent.postMessage({ type: "hub-link-doom-exit" }, "*");
+        }
+      };
+
+      const dos = Dos(root, { style: "none" });
+      dos
+        .run("./doom.jsdos")
+        .then((commandInterface) => {
+          ci = commandInterface;
+          if (ci && typeof ci.events === "function") {
+            const events = ci.events();
+            if (events && typeof events.onExit === "function") {
+              events.onExit(() => {
+                requestParentClose();
+              });
+            }
+            if (events && typeof events.onStdout === "function") {
+              events.onStdout((chunk) => {
+                if (typeof chunk !== "string") return;
+                stdoutTail = `${stdoutTail}${chunk}`.slice(-240);
+                const normalized = stdoutTail.replace(/\r/g, "");
+                const isDosPrompt = /[A-Za-z]:\\>\s*$/.test(normalized);
+                if (Date.now() - bootedAt > 1500 && isDosPrompt) {
+                  requestParentClose();
+                }
+              });
+            }
+          }
+          root.focus();
+        })
+        .catch((error) => {
+          console.error("[doom] failed to start", error);
+        });
+
+      const sendMappedKey = (keyCode, pressed) => {
+        if (!ci || typeof ci.sendKeyEvent !== "function") return;
+        ci.sendKeyEvent(keyCode, pressed);
+      };
+
+      const releaseAllMappedKeys = () => {
+        if (pressedRemappedCodes.size === 0) return;
+        for (const code of pressedRemappedCodes) {
+          const mappedKeyCode = remapTable[code];
+          if (mappedKeyCode !== undefined) sendMappedKey(mappedKeyCode, false);
+        }
+        pressedRemappedCodes.clear();
+      };
+
+      const remapKeyEvent = (event, pressed) => {
+        if (!event.isTrusted) return;
+        const mappedKeyCode = remapTable[event.code];
+        if (mappedKeyCode === undefined) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+        root.focus();
+
+        if (pressed) {
+          if (pressedRemappedCodes.has(event.code)) return;
+          pressedRemappedCodes.add(event.code);
+          sendMappedKey(mappedKeyCode, true);
+          return;
+        }
+
+        if (!pressedRemappedCodes.has(event.code)) return;
+        pressedRemappedCodes.delete(event.code);
+        sendMappedKey(mappedKeyCode, false);
+      };
+
+      window.addEventListener("keydown", (event) => remapKeyEvent(event, true), true);
+      window.addEventListener("keyup", (event) => remapKeyEvent(event, false), true);
+      window.addEventListener("blur", releaseAllMappedKeys, true);
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) releaseAllMappedKeys();
+      });
+      window.addEventListener("pointerdown", () => root.focus(), true);
+      window.addEventListener("load", () => root.focus(), { once: true });
+    </script>
+  </body>
+</html>
