@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Plus, ChevronLeft, Search, Filter, ArrowUp } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://158.179.161.109').replace(/\/+$/, '');
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'https://158.179.161.109.traefik.me').replace(/\/+$/, '');
 const COMMENTS_ENDPOINT = `${API_BASE_URL}/api/comments`;
 const CHAT_ID = 1;
 const MAX_MESSAGE_LENGTH = 300;
