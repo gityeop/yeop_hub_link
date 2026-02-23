@@ -15,6 +15,9 @@ const VISIT_EVENT_NAME = '[SYSTEM_VISIT_COUNTER]';
 
 const VISITOR_NAME_KEY = 'hub_link_visitor_name_v1';
 const HIDDEN_IDS_KEY = 'hub_link_hidden_comment_ids_v1';
+const OWNER_AUTH_GUARD_KEY = 'hub_link_owner_auth_guard_v1';
+const OWNER_AUTH_MAX_FAILURES = 5;
+const OWNER_AUTH_LOCK_MS = 10 * 60 * 1000;
 
 const CONTACT = {
     id: CHAT_ID,
@@ -64,6 +67,65 @@ const loadHiddenIds = () => {
     } catch (error) {
         return [];
     }
+};
+
+const loadOwnerAuthGuard = () => {
+    if (typeof window === 'undefined') {
+        return { failedAttempts: 0, lockUntil: 0 };
+    }
+
+    try {
+        const raw = window.localStorage.getItem(OWNER_AUTH_GUARD_KEY);
+        if (!raw) return { failedAttempts: 0, lockUntil: 0 };
+
+        const parsed = JSON.parse(raw);
+        const failedAttempts = Number(parsed?.failedAttempts);
+        const lockUntil = Number(parsed?.lockUntil);
+
+        const safeFailedAttempts = Number.isFinite(failedAttempts) && failedAttempts > 0 ? Math.floor(failedAttempts) : 0;
+        const safeLockUntil = Number.isFinite(lockUntil) && lockUntil > Date.now() ? Math.floor(lockUntil) : 0;
+
+        return { failedAttempts: safeFailedAttempts, lockUntil: safeLockUntil };
+    } catch (error) {
+        return { failedAttempts: 0, lockUntil: 0 };
+    }
+};
+
+const saveOwnerAuthGuard = (value) => {
+    if (typeof window === 'undefined') return;
+
+    try {
+        window.localStorage.setItem(OWNER_AUTH_GUARD_KEY, JSON.stringify(value));
+    } catch (error) {
+        // Ignore localStorage persistence errors.
+    }
+};
+
+const clearOwnerAuthGuard = () => {
+    saveOwnerAuthGuard({ failedAttempts: 0, lockUntil: 0 });
+};
+
+const registerOwnerAuthFailure = () => {
+    const guard = loadOwnerAuthGuard();
+    const nextFailedAttempts = guard.failedAttempts + 1;
+
+    if (nextFailedAttempts >= OWNER_AUTH_MAX_FAILURES) {
+        const locked = { failedAttempts: 0, lockUntil: Date.now() + OWNER_AUTH_LOCK_MS };
+        saveOwnerAuthGuard(locked);
+        return locked;
+    }
+
+    const next = { failedAttempts: nextFailedAttempts, lockUntil: 0 };
+    saveOwnerAuthGuard(next);
+    return next;
+};
+
+const isOwnerAuthLocked = (guard) => guard.lockUntil > Date.now();
+
+const getOwnerAuthLockMinutes = (guard) => {
+    const remainingMs = guard.lockUntil - Date.now();
+    if (remainingMs <= 0) return 0;
+    return Math.max(1, Math.ceil(remainingMs / 60000));
 };
 
 const sanitizeVisitorName = (value) => {
@@ -377,19 +439,39 @@ const IMessageApp = ({ onClose }) => {
         setErrorMessage('');
 
         try {
-            let response = await fetch(COMMENTS_ENDPOINT, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    [OWNER_PASSWORD_HEADER]: enteredPassword
-                },
-                body: JSON.stringify({
-                    name: `${OWNER_NAME_TAG}${OWNER_DISPLAY_NAME}`,
-                    message: messageText
-                })
-            });
+            const ownerGuard = loadOwnerAuthGuard();
+            let response = null;
+            let ownerLockNotice = '';
 
-            if (response.status === 401 || response.status === 403) {
+            if (!isOwnerAuthLocked(ownerGuard)) {
+                response = await fetch(COMMENTS_ENDPOINT, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        [OWNER_PASSWORD_HEADER]: enteredPassword
+                    },
+                    body: JSON.stringify({
+                        name: `${OWNER_NAME_TAG}${OWNER_DISPLAY_NAME}`,
+                        message: messageText
+                    })
+                });
+
+                if (response.ok) {
+                    clearOwnerAuthGuard();
+                } else if (response.status === 401 || response.status === 403) {
+                    const updatedGuard = registerOwnerAuthFailure();
+                    if (isOwnerAuthLocked(updatedGuard)) {
+                        const minutes = getOwnerAuthLockMinutes(updatedGuard);
+                        ownerLockNotice = `마스터 인증 시도가 너무 많아 ${minutes}분 동안 제한됩니다.`;
+                    }
+                    response = null;
+                }
+            } else {
+                const minutes = getOwnerAuthLockMinutes(ownerGuard);
+                ownerLockNotice = `마스터 인증 시도가 제한 중입니다. ${minutes}분 후 다시 시도해 주세요.`;
+            }
+
+            if (!response) {
                 response = await fetch(COMMENTS_ENDPOINT, {
                     method: 'POST',
                     headers: {
@@ -418,6 +500,9 @@ const IMessageApp = ({ onClose }) => {
                 [CHAT_ID]: [...(prev[CHAT_ID] || []), toMessage(created)]
             }));
             setInputValue('');
+            if (ownerLockNotice) {
+                setErrorMessage(ownerLockNotice);
+            }
         } catch (error) {
             setErrorMessage('댓글 등록에 실패했습니다. 잠시 후 다시 시도해 주세요.');
         } finally {
@@ -431,9 +516,7 @@ const IMessageApp = ({ onClose }) => {
         const confirmed = window.confirm('이 메시지를 삭제할까요?');
         if (!confirmed) return;
 
-        const entered = window.prompt(
-            message.isOwner ? '마스터 비밀번호를 입력해주세요.' : '비밀번호를 입력해주세요.'
-        );
+        const entered = window.prompt('비밀번호를 입력해주세요.');
         if (entered === null) return;
 
         const password = entered.trim();
@@ -443,33 +526,29 @@ const IMessageApp = ({ onClose }) => {
         }
 
         setErrorMessage('');
-        let canApplyLocalDelete = false;
+        let serverDeleted = false;
 
         try {
             const response = await fetch(`${COMMENTS_ENDPOINT}/${message.serverId}`, {
                 method: 'DELETE',
-                headers: message.isOwner
-                    ? { [OWNER_PASSWORD_HEADER]: password }
-                    : { [COMMENT_PASSWORD_HEADER]: password }
+                headers: {
+                    [OWNER_PASSWORD_HEADER]: password,
+                    [COMMENT_PASSWORD_HEADER]: password
+                }
             });
 
             if (response.ok) {
-                canApplyLocalDelete = true;
+                serverDeleted = true;
             } else if (response.status === 404) {
-                canApplyLocalDelete = true;
+                // treat as already removed remotely and still hide locally
             } else if (response.status === 401 || response.status === 403) {
-                setErrorMessage(message.isOwner ? '마스터 비밀번호가 올바르지 않습니다.' : '삭제 비밀번호가 올바르지 않습니다.');
+                setErrorMessage('삭제 비밀번호가 올바르지 않습니다.');
                 return;
             } else {
                 throw new Error(`Failed to delete comment: ${response.status}`);
             }
         } catch (error) {
-            setErrorMessage('삭제에 실패했습니다. 잠시 후 다시 시도해 주세요.');
-            return;
-        }
-
-        if (!canApplyLocalDelete) {
-            return;
+            // Keep local hide behavior below even if request fails.
         }
 
         setAllMessages((prev) => ({
@@ -477,6 +556,10 @@ const IMessageApp = ({ onClose }) => {
             [CHAT_ID]: (prev[CHAT_ID] || []).filter((item) => item.id !== message.id)
         }));
         setHiddenCommentIds((prev) => (prev.includes(message.serverId) ? prev : [...prev, message.serverId]));
+
+        if (!serverDeleted) {
+            setErrorMessage('서버 삭제 API가 아직 없어 현재 브라우저에서만 숨김 처리되었습니다.');
+        }
     };
 
     return (
