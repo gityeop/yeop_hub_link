@@ -1,9 +1,12 @@
-import React from 'react';
-import { ExternalLink } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { ExternalLink, RotateCcw } from 'lucide-react';
 
-const DOOM_EMBED_URL = 'https://archive.org/embed/doom-dos';
+const DOOM_LOCAL_PATH = `${import.meta.env.BASE_URL}doom/index.html`;
 
 const DoomApp = ({ onClose }) => {
+  const [reloadVersion, setReloadVersion] = useState(0);
+  const iframeSrc = useMemo(() => DOOM_LOCAL_PATH, []);
+
   return (
     <div
       style={{
@@ -66,7 +69,7 @@ const DoomApp = ({ onClose }) => {
         <button
           type="button"
           data-no-drag
-          onClick={() => window.open('https://archive.org/details/doom-dos', '_blank', 'noopener,noreferrer')}
+          onClick={() => window.open(iframeSrc, '_blank', 'noopener,noreferrer')}
           style={{
             border: '1px solid rgba(255,255,255,0.2)',
             background: 'rgba(255,255,255,0.08)',
@@ -83,11 +86,42 @@ const DoomApp = ({ onClose }) => {
           }}
         >
           <ExternalLink size={12} />
-          Open Source Page
+          Open Local Runtime
         </button>
       </div>
 
       <div style={{ padding: '12px', flex: 1, minHeight: 0 }}>
+        <div
+          data-no-drag
+          style={{
+            display: 'flex',
+            justifyContent: 'flex-end',
+            marginBottom: '8px'
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setReloadVersion((prev) => prev + 1)}
+            style={{
+              border: '1px solid rgba(255,255,255,0.2)',
+              background: 'rgba(255,255,255,0.08)',
+              color: '#E5E7EB',
+              borderRadius: '8px',
+              height: '28px',
+              padding: '0 10px',
+              fontSize: '11px',
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              cursor: 'pointer'
+            }}
+          >
+            <RotateCcw size={12} />
+            Restart
+          </button>
+        </div>
+
         <div
           style={{
             width: '100%',
@@ -99,9 +133,11 @@ const DoomApp = ({ onClose }) => {
           }}
         >
           <iframe
-            src={DOOM_EMBED_URL}
+            key={reloadVersion}
+            src={iframeSrc}
             title="DOOM"
             loading="lazy"
+            allow="autoplay; fullscreen; gamepad"
             allowFullScreen
             style={{
               width: '100%',

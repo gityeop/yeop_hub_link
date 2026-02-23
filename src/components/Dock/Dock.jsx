@@ -8,7 +8,6 @@ import threadIcon from '../../assets/icons/threads.png';
 import mailIcon from '../../assets/icons/mail.png';
 import ontextIcon from '../../assets/ontext-icon.png';
 import flowclipIcon from '../../assets/flowclip-icon.png';
-import doomIcon from '../../assets/icons/doom.svg';
 
 const DockItem = ({ icon, label, onClick }) => {
   const [isHovered, setIsHovered] = useState(false);
@@ -99,7 +98,6 @@ const Dock = ({ onAppClick }) => {
       <DockItem icon={mailIcon} label="Mail" onClick={() => onAppClick('mail')} />
       <DockItem icon={ontextIcon} label="OnText" onClick={() => onAppClick('ontext')} />
       <DockItem icon={flowclipIcon} label="FlowClip" onClick={() => onAppClick('flowclip')} />
-      <DockItem icon={doomIcon} label="DOOM" onClick={() => onAppClick('doom')} />
     </div>
   );
 };
