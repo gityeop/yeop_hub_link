@@ -3,6 +3,9 @@ import { CalendarDays, Flame, Github, Timer } from 'lucide-react';
 
 const GITHUB_USERNAME = 'gityeop';
 const GITHUB_CONTRIBUTIONS_URL = `https://github-contributions-api.jogruber.de/v4/${GITHUB_USERNAME}?y=last`;
+const GITHUB_PROFILE_URL = `https://github.com/${GITHUB_USERNAME}`;
+const GITHUB_EVENTS_URL = `https://api.github.com/users/${GITHUB_USERNAME}/events/public?per_page=100`;
+const GITHUB_EVENTS_PAGES = 3;
 const GITHUB_MONTH_RANGE = 3;
 const GITHUB_REFRESH_INTERVAL_MS = 60 * 1000;
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://158.179.161.109').replace(/\/+$/, '');
@@ -126,6 +129,113 @@ const selectRecentMonths = (days, months) => {
   return ordered.filter((day) => asUtcDate(day.date) >= startDate);
 };
 
+const buildRecentDateRange = (months) => {
+  const endDate = new Date();
+  endDate.setUTCHours(0, 0, 0, 0);
+  const startDate = new Date(endDate);
+  startDate.setUTCMonth(startDate.getUTCMonth() - months);
+  return {
+    startDate,
+    endDate,
+    startKey: toDateKey(startDate),
+    endKey: toDateKey(endDate)
+  };
+};
+
+const buildDailyCountsForRange = (countsByDate, startDate, endDate) => {
+  const days = [];
+  const cursor = new Date(startDate);
+  while (cursor <= endDate) {
+    const key = toDateKey(cursor);
+    days.push({
+      date: key,
+      count: countsByDate.get(key) || 0
+    });
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return days;
+};
+
+const mergeDailyActivity = (baseDays, overlayDays) => {
+  const { startDate, endDate } = buildRecentDateRange(GITHUB_MONTH_RANGE);
+  const mergedMap = new Map();
+
+  for (const item of baseDays) {
+    if (!item || typeof item.date !== 'string') continue;
+    if (typeof item.count !== 'number') continue;
+    mergedMap.set(item.date, item.count);
+  }
+
+  for (const item of overlayDays) {
+    if (!item || typeof item.date !== 'string') continue;
+    if (typeof item.count !== 'number') continue;
+    const current = mergedMap.get(item.date) || 0;
+    mergedMap.set(item.date, Math.max(current, item.count));
+  }
+
+  return buildDailyCountsForRange(mergedMap, startDate, endDate);
+};
+
+const fetchGithubEventDays = async (signal) => {
+  const { startDate, endDate, startKey, endKey } = buildRecentDateRange(GITHUB_MONTH_RANGE);
+  const countsByDate = new Map();
+  const requestNonce = Date.now();
+
+  for (let page = 1; page <= GITHUB_EVENTS_PAGES; page += 1) {
+    const response = await fetch(`${GITHUB_EVENTS_URL}&page=${page}&_=${requestNonce}`, {
+      headers: { Accept: 'application/vnd.github+json' },
+      cache: 'no-store',
+      signal
+    });
+    if (!response.ok) {
+      throw new Error(`GitHub events API error: ${response.status}`);
+    }
+
+    const payload = await response.json();
+    if (!Array.isArray(payload)) {
+      throw new Error('Unexpected GitHub events payload');
+    }
+    if (payload.length === 0) break;
+
+    let oldestEventDate = endKey;
+    for (const item of payload) {
+      if (!item || typeof item !== 'object') continue;
+      if (typeof item.created_at !== 'string') continue;
+      const dayKey = item.created_at.slice(0, 10);
+      if (dayKey < oldestEventDate) oldestEventDate = dayKey;
+      if (dayKey < startKey || dayKey > endKey) continue;
+      countsByDate.set(dayKey, (countsByDate.get(dayKey) || 0) + 1);
+    }
+
+    if (payload.length < 100 || oldestEventDate < startKey) {
+      break;
+    }
+  }
+
+  return buildDailyCountsForRange(countsByDate, startDate, endDate);
+};
+
+const fetchGithubContributionDays = async (signal) => {
+  const contributionResponse = await fetch(`${GITHUB_CONTRIBUTIONS_URL}&_=${Date.now()}`, {
+    headers: { Accept: 'application/json' },
+    cache: 'no-store',
+    signal
+  });
+  if (!contributionResponse.ok) {
+    throw new Error(`GitHub contributions API error: ${contributionResponse.status}`);
+  }
+
+  const contributionPayload = await contributionResponse.json();
+  const contributionDays = Array.isArray(contributionPayload?.contributions)
+    ? contributionPayload.contributions.map(normalizeContributionDay).filter(Boolean)
+    : [];
+  if (contributionDays.length === 0) {
+    throw new Error('Unexpected GitHub contributions payload');
+  }
+
+  return selectRecentMonths(contributionDays, GITHUB_MONTH_RANGE);
+};
+
 const isVisitEventComment = (item) => {
   if (!item || typeof item !== 'object') return false;
   return typeof item.name === 'string' && item.name.trim() === VISIT_EVENT_NAME;
@@ -205,6 +315,9 @@ const DesktopWidgets = () => {
   const shouldShowGithubPlaceholder =
     githubData.loading || Boolean(githubData.error) || githubData.weeks.length === 0;
   const githubWeeks = shouldShowGithubPlaceholder ? githubPlaceholderWeeks : githubData.weeks;
+  const openGithubProfile = () => {
+    window.open(GITHUB_PROFILE_URL, '_blank', 'noopener,noreferrer');
+  };
 
   useEffect(() => {
     setIsTimerRunning(false);
@@ -238,26 +351,28 @@ const DesktopWidgets = () => {
       activeController = controller;
 
       try {
-        const contributionResponse = await fetch(`${GITHUB_CONTRIBUTIONS_URL}&_=${Date.now()}`, {
-          headers: { Accept: 'application/json' },
-          cache: 'no-store',
-          signal: controller.signal
-        });
-        if (!contributionResponse.ok) {
-          throw new Error(`GitHub contributions API error: ${contributionResponse.status}`);
+        let contributionDays = [];
+        let eventDays = [];
+
+        try {
+          contributionDays = await fetchGithubContributionDays(controller.signal);
+        } catch (error) {
+          contributionDays = [];
         }
 
-        const contributionPayload = await contributionResponse.json();
-        const contributionDays = Array.isArray(contributionPayload?.contributions)
-          ? contributionPayload.contributions.map(normalizeContributionDay).filter(Boolean)
-          : [];
-        if (contributionDays.length === 0) {
-          throw new Error('Unexpected GitHub contributions payload');
+        try {
+          eventDays = await fetchGithubEventDays(controller.signal);
+        } catch (error) {
+          eventDays = [];
         }
 
-        const recentQuarterDays = selectRecentMonths(contributionDays, GITHUB_MONTH_RANGE);
-        const levels = buildContributionLevels(recentQuarterDays);
-        const weeks = buildContributionCalendar(recentQuarterDays);
+        const recentActivityDays = mergeDailyActivity(contributionDays, eventDays);
+        if (!recentActivityDays.some((day) => day.count > 0)) {
+          throw new Error('No activity days available');
+        }
+
+        const levels = buildContributionLevels(recentActivityDays);
+        const weeks = buildContributionCalendar(recentActivityDays);
         if (!cancelled) {
           setGithubData({
             loading: false,
@@ -410,6 +525,18 @@ const DesktopWidgets = () => {
           justify-self: start;
           width: fit-content;
           max-width: 100%;
+        }
+        .desktop-widget-link {
+          cursor: pointer;
+          transition: transform 0.16s ease, border-color 0.16s ease;
+        }
+        .desktop-widget-link:hover {
+          transform: translateY(-1px);
+          border-color: rgba(147, 197, 253, 0.62);
+        }
+        .desktop-widget-link:focus-visible {
+          outline: 2px solid rgba(147, 197, 253, 0.88);
+          outline-offset: 2px;
         }
         .desktop-widget-calendar {
           width: 220px;
@@ -570,7 +697,19 @@ const DesktopWidgets = () => {
             </div>
           </section>
 
-          <section className="desktop-widget-card desktop-widget-github">
+          <section
+            className="desktop-widget-card desktop-widget-github desktop-widget-link"
+            role="button"
+            tabIndex={0}
+            title="Open GitHub profile"
+            onClick={openGithubProfile}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                openGithubProfile();
+              }
+            }}
+          >
             <div className="desktop-widget-title">
               <Github size={14} />
               GitHub Activity
