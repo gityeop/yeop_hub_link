@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import '../../styles/global.css';
-import bgImage from '../../assets/bg-gemini-4.png';
+import bgImage from '../../assets/bg-gemini-4.webp';
 import DesktopWidgets from './DesktopWidgets';
 import doomIcon from '../../assets/icons/doom.svg';
 

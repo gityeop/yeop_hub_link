@@ -2,12 +2,12 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // Import images
-import msgIcon from '../../assets/icons/messages.png';
-import instaIcon from '../../assets/icons/instagram.png';
-import threadIcon from '../../assets/icons/threads.png';
-import mailIcon from '../../assets/icons/mail.png';
-import ontextIcon from '../../assets/ontext-icon.png';
-import flowclipIcon from '../../assets/flowclip-icon.png';
+import msgIcon from '../../assets/icons/messages.webp';
+import instaIcon from '../../assets/icons/instagram.webp';
+import threadIcon from '../../assets/icons/threads.webp';
+import mailIcon from '../../assets/icons/mail.webp';
+import ontextIcon from '../../assets/ontext-icon.webp';
+import flowclipIcon from '../../assets/flowclip-icon.webp';
 
 const DockItem = ({ icon, label, onClick }) => {
   const [isHovered, setIsHovered] = useState(false);
