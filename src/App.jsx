@@ -6,6 +6,7 @@ import IMessageApp from './apps/iMessage/IMessageApp';
 import OnTextApp from './apps/OnText/OnTextApp';
 import FlowClipApp from './apps/FlowClip/FlowClipApp';
 import DoomApp from './apps/Doom/DoomApp';
+import RejectedMailApp from './apps/RejectedMail/RejectedMailApp';
 import './styles/global.css';
 
 function App() {
@@ -17,6 +18,7 @@ function App() {
     ontext: false,
     flowclip: false,
     doom: false,
+    rejectedMail: false,
   });
   const [windowOrder, setWindowOrder] = useState([]);
 
@@ -82,7 +84,7 @@ function App() {
   };
 
   return (
-    <Desktop onLaunchDoom={() => handleAppClick('doom')}>
+    <Desktop onOpenApp={handleAppClick}>
         <Window 
             id="messages" 
             title="Messages" 
@@ -141,6 +143,21 @@ function App() {
             zIndex={getWindowZIndex('doom')}
         >
             <DoomApp onClose={() => closeWindow('doom')} />
+        </Window>
+
+        <Window
+            id="rejectedMail"
+            title="채용불합격 이메일 해석기"
+            isOpen={activeWindows.rejectedMail}
+            onClose={() => closeWindow('rejectedMail')}
+            onFocus={() => bringToFront('rejectedMail')}
+            initialPosition={{ x: 320, y: 180 }}
+            hideTitleBar={true}
+            width="980px"
+            height="700px"
+            zIndex={getWindowZIndex('rejectedMail')}
+        >
+            <RejectedMailApp onClose={() => closeWindow('rejectedMail')} />
         </Window>
 
         <Dock onAppClick={handleAppClick} />
